@@ -1,0 +1,129 @@
+<html>
+<head>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.24.0/moment.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.3/dist/Chart.min.js"></script>
+</head>
+
+<body style="padding: 0; margin: 0; font-family: arial;">
+<div style="padding: 12px;">
+  County:
+  <select onchange="run()" name="county">
+    <option data-county="New York City" data-state="New York">New York City, NY</option>
+    <option data-county="Nassau" data-state="New York">Nassau, NY</option>
+    <option data-county="Suffolk" data-state="New York">Suffolk, NY</option>
+    <option data-county="Westchester" data-state="New York">Westchester, NY</option>
+    <option data-county="Hudson" data-state="New Jersey">Hudson, NJ</option>
+    <option data-county="Essex" data-state="New Jersey">Essex, NJ</option>
+    <option data-county="Union" data-state="New Jersey">Union, NJ</option>
+    <option data-county="Bergen" data-state="New Jersey">Bergen, NJ</option>
+    <option data-county="Passaic" data-state="New Jersey">Passaic, NJ</option>
+    <option data-county="Morris" data-state="New Jersey">Morris, NJ</option>
+    <option data-county="Somerest" data-state="New Jersey">Somerest, NJ</option>
+    <option data-county="Middlesex" data-state="New Jersey">Middlesex, NJ</option>
+    <option data-county="Fairfield" data-state="Connecticut">Fairfield, CT</option>
+  </select>
+</div>
+
+<canvas id="chart" style="width: 100%; height: calc(100% - 100px)"></canvas>
+
+<div style="padding: 12px;">
+  <small>Sources:
+    <a target="_blank" href="https://www1.nyc.gov/site/doh/covid/covid-19-data.page">https://www1.nyc.gov/site/doh/covid/covid-19-data.page</a>
+    and <a target="_blank" href="https://www.nytimes.com/interactive/2020/us/coronavirus-us-cases.html">https://www.nytimes.com/interactive/2020/us/coronavirus-us-cases.html</a>
+  </small>
+</div>
+
+
+<script>
+  const run = async () => {
+    const countySelectElem = document.querySelector('select[name=county]')
+    const selectedCountyOptionElem = countySelectElem.options[countySelectElem.selectedIndex]
+
+    const county = selectedCountyOptionElem.getAttribute('data-county')
+    const state = selectedCountyOptionElem.getAttribute('data-state')
+
+    let nycStats = null
+    if (county === 'New York City') {
+      nycStats = (await (await fetch('https://raw.githubusercontent.com/nychealth/coronavirus-data/master/case-hosp-death.csv?v=1587081154035')).text())
+        .split('\n')
+        .map(a => a.split(','))
+
+      nycStats.shift()
+    }
+
+    let nytStats = (await (await fetch('https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv')).text())
+      .split('\n')
+      .map(a => a.split(','))
+      .filter(a => a[1] === county && a[2] === state)
+
+    const data = []
+
+    for (let i = 365; i >= 0; i--) {
+      const day = moment().startOf('day').subtract(i, 'days')
+      const dayBefore = moment().startOf('day').subtract(i + 1, 'days')
+
+      const nycStat = nycStats ? nycStats.filter(stat => moment(stat[0]).isSame(day))[0] : null
+      const nytStat = nytStats.filter(stat => moment(stat[0]).isSame(day))[0]
+      const nytDayBeforeStat = nytStats.filter(stat => moment(stat[0]).isSame(dayBefore))[0]
+
+      if (nycStat || nytStat) {
+        let nycNewCases = null
+        if (nycStat) {
+          nycNewCases = +nycStat[1]
+          // +nycStat[2] // new hospitalizations
+          // +nycStat[3] // new deaths
+        }
+
+        let nytNewCases = null
+        if (nytStat) {
+          nytNewCases = +nytStat[4] - (nytDayBeforeStat ? +nytDayBeforeStat[4] : 0)
+          // +nytStat[5] // total deaths
+        }
+
+        data.push({day: day.format('MMM D'), nycNewCases, nytNewCases})
+      }
+    }
+
+    const dataSets = []
+
+    if (data.filter(d => d.nycNewCases).length) {
+      dataSets.push({
+        label: 'New York City Government',
+        data: data.map(d => d.nycNewCases),
+        fill: false,
+        borderColor: ['rgba(54, 162, 235, 1)'],
+      })
+    }
+
+    if (data.filter(d => d.nytNewCases).length) {
+      dataSets.push({
+        label: 'New York Times',
+        data: data.map(d => d.nytNewCases),
+        fill: false,
+        borderColor: ['rgba(255, 99, 132, 1)'],
+      })
+    }
+
+    new Chart(document.getElementById('chart').getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: data.map(d => d.day),
+        datasets: dataSets
+      },
+      options: {
+        title: {
+          display: true,
+          text: 'Daily New Cases',
+          fontSize: '24',
+          fontFamily: 'Arial',
+          fontColor: '#000',
+          padding: 12,
+        }
+      }
+    })
+  }
+
+  run()
+</script>
+</body>
+</html>
