@@ -5,115 +5,122 @@
 </head>
 
 <body style="padding: 0; margin: 0; font-family: arial;">
-<div style="padding: 12px;">
-  County:
-  <select onchange="run()" name="county">
-    <option data-county="New York City" data-state="New York">New York City, NY</option>
-    <option data-county="Nassau" data-state="New York">Nassau, NY</option>
-    <option data-county="Suffolk" data-state="New York">Suffolk, NY</option>
-    <option data-county="Westchester" data-state="New York">Westchester, NY</option>
-    <option data-county="Hudson" data-state="New Jersey">Hudson, NJ</option>
-    <option data-county="Essex" data-state="New Jersey">Essex, NJ</option>
-    <option data-county="Union" data-state="New Jersey">Union, NJ</option>
-    <option data-county="Bergen" data-state="New Jersey">Bergen, NJ</option>
-    <option data-county="Passaic" data-state="New Jersey">Passaic, NJ</option>
-    <option data-county="Morris" data-state="New Jersey">Morris, NJ</option>
-    <option data-county="Somerest" data-state="New Jersey">Somerest, NJ</option>
-    <option data-county="Middlesex" data-state="New Jersey">Middlesex, NJ</option>
-    <option data-county="Fairfield" data-state="Connecticut">Fairfield, CT</option>
+
+<div style="padding: 12px">
+  Show:
+  <select id="per-capita" onchange="run()">
+    <option value="1" selected>Daily New Cases Per 100,000</option>
+    <option value="0">Daily New Cases</option>
   </select>
+  averaged over:
+  <select id="average-days" onchange="run()">
+    <option value="1">1</option>
+    <option value="2">2</option>
+    <option value="3" selected>3</option>
+    <option value="4">4</option>
+    <option value="5">5</option>
+    <option value="6">6</option>
+    <option value="7">7</option>
+  </select>
+  day(s)
 </div>
 
-<canvas id="chart" style="width: 100%; height: calc(100% - 100px)"></canvas>
+<canvas id="chart" style="width: 100%; height: calc(100% - 120px)"></canvas>
 
 <div style="padding: 12px;">
   <small>Sources:
-    <a target="_blank" href="https://www1.nyc.gov/site/doh/covid/covid-19-data.page">https://www1.nyc.gov/site/doh/covid/covid-19-data.page</a>
-    and <a target="_blank" href="https://www.nytimes.com/interactive/2020/us/coronavirus-us-cases.html">https://www.nytimes.com/interactive/2020/us/coronavirus-us-cases.html</a>
+    <a target="_blank" href="https://www.nytimes.com/interactive/2020/us/coronavirus-us-cases.html">https://www.nytimes.com/interactive/2020/us/coronavirus-us-cases.html</a>
+    and <a target="_blank" href="https://www1.nyc.gov/site/doh/covid/covid-19-data.page">https://www1.nyc.gov/site/doh/covid/covid-19-data.page</a>
   </small>
 </div>
 
-
 <script>
-  const run = async () => {
-    const countySelectElem = document.querySelector('select[name=county]')
-    const selectedCountyOptionElem = countySelectElem.options[countySelectElem.selectedIndex]
+  let chart
 
-    const county = selectedCountyOptionElem.getAttribute('data-county')
-    const state = selectedCountyOptionElem.getAttribute('data-state')
+  const run = async() => {
+    const counties = [
+      {id: 1,  source: 'nyt', state: 'New York',    county: 'New York City', population: 8399000, display: true,  label: 'NYC, NY',             color: '#1f77b4'},
+      {id: 2,  source: 'nyc', state: 'New York',    county: 'New York City', population: 8399000, display: false, label: 'NYC, NY (Govt Data)', color: '#aec7e8'},
+      {id: 3,  source: 'nyt', state: 'New York',    county: 'Nassau',        population: 1357000, display: true,  label: 'Nassau, NY',          color: '#ff7f0e'},
+      {id: 4,  source: 'nyt', state: 'New York',    county: 'Suffolk',       population: 1477000, display: true,  label: 'Suffolk, NY',         color: '#ffbb78'},
+      {id: 5,  source: 'nyt', state: 'New York',    county: 'Westchester',   population: 967506,  display: false, label: 'Westchester, NY',     color: '#2ca02c'},
+      {id: 6,  source: 'nyt', state: 'New Jersey',  county: 'Hudson',        population: 672391,  display: false, label: 'Hudson, NJ',          color: '#98df8a'},
+      {id: 7,  source: 'nyt', state: 'New Jersey',  county: 'Essex',         population: 798975,  display: false, label: 'Essex, NJ',           color: '#d62728'},
+      {id: 8,  source: 'nyt', state: 'New Jersey',  county: 'Union',         population: 58757,   display: false, label: 'Union, NJ',           color: '#ff9896'},
+      {id: 9,  source: 'nyt', state: 'New Jersey',  county: 'Bergen',        population: 932202,  display: false, label: 'Bergen, NJ',          color: '#9467bd'},
+      {id: 10, source: 'nyt', state: 'New Jersey',  county: 'Passaic',       population: 69948,   display: false, label: 'Passaic, NJ',         color: '#c5b0d5'},
+      {id: 11, source: 'nyt', state: 'New Jersey',  county: 'Morris',        population: 491845,  display: false, label: 'Morris, NJ',          color: '#8c564b'},
+      {id: 12, source: 'nyt', state: 'New Jersey',  county: 'Somerset',      population: 22083,   display: false, label: 'Somerset, NJ',        color: '#c49c94'},
+      {id: 13, source: 'nyt', state: 'New Jersey',  county: 'Middlesex',     population: 13712,   display: false, label: 'Middlesex, NJ',       color: '#e377c2'},
+      {id: 14, source: 'nyt', state: 'Connecticut', county: 'Fairfield',     population: 7063,    display: false, label: 'Fairfield, CT',       color: '#f7b6d2'},
+    ]
+    const today = moment().startOf('day')
+    const data = [...Array(40)].map((a, i) => {return {day: moment(today).subtract(i, 'days')}}).reverse()
+    const averageDaysSelectElem = document.getElementById('average-days')
+    const averageDays = +averageDaysSelectElem.options[averageDaysSelectElem.selectedIndex].value
+    const perCapitaSelectElem = document.getElementById('per-capita')
+    const showPerCapita = perCapitaSelectElem.options[perCapitaSelectElem.selectedIndex].value === '1'
 
-    let nycStats = null
-    if (county === 'New York City') {
-      nycStats = (await (await fetch('https://raw.githubusercontent.com/nychealth/coronavirus-data/master/case-hosp-death.csv?v=1587081154035')).text())
-        .split('\n')
-        .map(a => a.split(','))
+    let [nytStats, nycStats] = await Promise.all([
+      fetch('https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv'),
+      fetch('https://raw.githubusercontent.com/nychealth/coronavirus-data/master/case-hosp-death.csv?v=1587081154035'),
+    ])
 
-      nycStats.shift()
-    }
+    nytStats = (await nytStats.text())
+      .split('\n')
+      .map(stat => stat.split(','))
+      .map(stat => {return {day: moment(stat[0]), county: stat[1], state: stat[2], totalCases: +stat[4]}})
+    nytStats.shift()
 
-    let nytStats = (await (await fetch('https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv')).text())
+    nycStats = (await nycStats.text())
       .split('\n')
       .map(a => a.split(','))
-      .filter(a => a[1] === county && a[2] === state)
+      .map(stat => {return {day: moment(stat[0]), newCases: +stat[1]}})
+    nycStats.shift()
 
-    const data = []
+    counties.forEach(county => {
+      const stats = county.source === 'nyt' ? nytStats.filter(nytStat => nytStat.county === county.county && nytStat.state === county.state) : nycStats
 
-    for (let i = 365; i >= 0; i--) {
-      const day = moment().startOf('day').subtract(i, 'days')
-      const dayBefore = moment().startOf('day').subtract(i + 1, 'days')
+      if (county.source === 'nyt')
+        stats.forEach((stat, i) => stat.newCases = (stat.totalCases - (stats[i -1]?.totalCases || 0)))
 
-      const nycStat = nycStats ? nycStats.filter(stat => moment(stat[0]).isSame(day))[0] : null
-      const nytStat = nytStats.filter(stat => moment(stat[0]).isSame(day))[0]
-      const nytDayBeforeStat = nytStats.filter(stat => moment(stat[0]).isSame(dayBefore))[0]
+      data.forEach((d, i) => {
+        const stat = stats.filter(stat => stat.day.isSame(d.day))[0]
 
-      if (nycStat || nytStat) {
-        let nycNewCases = null
-        if (nycStat) {
-          nycNewCases = +nycStat[1]
-          // +nycStat[2] // new hospitalizations
-          // +nycStat[3] // new deaths
-        }
-
-        let nytNewCases = null
-        if (nytStat) {
-          nytNewCases = +nytStat[4] - (nytDayBeforeStat ? +nytDayBeforeStat[4] : 0)
-          // +nytStat[5] // total deaths
-        }
-
-        data.push({day: day.format('MMM D'), nycNewCases, nytNewCases})
-      }
-    }
-
-    const dataSets = []
-
-    if (data.filter(d => d.nycNewCases).length) {
-      dataSets.push({
-        label: 'New York City Government',
-        data: data.map(d => d.nycNewCases),
-        fill: false,
-        borderColor: ['rgba(54, 162, 235, 1)'],
+        if (showPerCapita)
+          d[county.id] = {newCasesPerCapita: stat ? ((stat.newCases / county.population) * 100000) : null}
+        else
+          d[county.id] = {newCasesPerCapita: stat ? stat.newCases : null}
       })
-    }
+    })
 
-    if (data.filter(d => d.nytNewCases).length) {
-      dataSets.push({
-        label: 'New York Times',
-        data: data.map(d => d.nytNewCases),
-        fill: false,
-        borderColor: ['rgba(255, 99, 132, 1)'],
+    counties.forEach(county => {
+      data.forEach((d, i) => {
+        const pastSevenDaysData = (i >= (averageDays - 1) ? data.slice(i - (averageDays - 1), i + 1) : []).map(d => d[county.id]?.newCasesPerCapita).filter(d => d)
+
+        d[county.id].averageNewCasesPerCapita = pastSevenDaysData.length === averageDays ? (pastSevenDaysData.reduce((a, b) => a + b, 0) / averageDays) : null
       })
-    }
+    })
 
-    new Chart(document.getElementById('chart').getContext('2d'), {
+    if (chart)
+      chart.destroy()
+
+    chart = new Chart(document.getElementById('chart').getContext('2d'), {
       type: 'line',
       data: {
-        labels: data.map(d => d.day),
-        datasets: dataSets
+        labels: data.map(d => d.day.format('MMM D')),
+        datasets: counties.map(county => {return {
+          label: county.label,
+          data: data.map(d => d[county.id].averageNewCasesPerCapita),
+          fill: false,
+          borderColor: [county.color],
+          hidden: !county.display,
+        }})
       },
       options: {
         title: {
           display: true,
-          text: 'Daily New Cases',
+          text: `Daily New Cases${showPerCapita ? ' Per 100,000' : ''}`,
           fontSize: '24',
           fontFamily: 'Arial',
           fontColor: '#000',
