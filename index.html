@@ -8,18 +8,17 @@
 
 <div style="padding: 12px">
   Show:
-  <select id="per-capita" onchange="run()">
-    <option value="1" selected>Daily New Cases Per 100,000</option>
-    <option value="0">Daily New Cases</option>
+  <select id="data-type" onchange="run()">
+    <option value="cases-per-capita" selected>Daily New Cases Per 100,000</option>
+    <option value="cases">Daily New Cases</option>
+    <option value="deaths-per-capita">Daily New Deaths Per 100,000</option>
+    <option value="deaths">Daily New Deaths</option>
   </select>
   averaged over:
   <select id="average-days" onchange="run()">
     <option value="1">1</option>
-    <option value="2">2</option>
     <option value="3" selected>3</option>
-    <option value="4">4</option>
     <option value="5">5</option>
-    <option value="6">6</option>
     <option value="7">7</option>
   </select>
   day(s)
@@ -55,11 +54,13 @@
       {id: 14, source: 'nyt', state: 'Connecticut', county: 'Fairfield',     population: 943332,    display: false, label: 'Fairfield, CT',       color: '#f7b6d2'},
     ]
     const today = moment().startOf('day')
-    const data = [...Array(40)].map((a, i) => {return {day: moment(today).subtract(i, 'days')}}).reverse()
+    const data = [...Array(today.diff(moment('20200301', 'YYYYMMDD'), 'days'))].map((a, i) => {return {day: moment(today).subtract(i, 'days')}}).reverse()
     const averageDaysSelectElem = document.getElementById('average-days')
     const averageDays = +averageDaysSelectElem.options[averageDaysSelectElem.selectedIndex].value
-    const perCapitaSelectElem = document.getElementById('per-capita')
-    const showPerCapita = perCapitaSelectElem.options[perCapitaSelectElem.selectedIndex].value === '1'
+    const dataTypeSelectElem = document.getElementById('data-type')
+    const dataType = dataTypeSelectElem.options[dataTypeSelectElem.selectedIndex].value
+    const showPerCapita = dataType === 'cases-per-capita' || dataType === 'deaths-per-capita'
+    const showType = (dataType === 'deaths-per-capita' || dataType === 'deaths') ? 'deaths' : 'cases'
 
     let [nytStats, nycStats] = await Promise.all([
       fetch('https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv'),
@@ -69,13 +70,13 @@
     nytStats = (await nytStats.text())
       .split('\n')
       .map(stat => stat.split(','))
-      .map(stat => {return {day: moment(stat[0]), county: stat[1], state: stat[2], totalCases: +stat[4]}})
+      .map(stat => {return {day: moment(stat[0]), county: stat[1], state: stat[2], totalCases: showType === 'deaths' ? +stat[5] : +stat[4]}})
     nytStats.shift()
 
     nycStats = (await nycStats.text())
       .split('\n')
       .map(a => a.split(','))
-      .map(stat => {return {day: moment(stat[0]), newCases: +stat[1]}})
+      .map(stat => {return {day: moment(stat[0]), newCases: showType === 'deaths' ? +stat[3] : +stat[1]}})
     nycStats.shift()
 
     counties.forEach(county => {
@@ -88,17 +89,18 @@
         const stat = stats.filter(stat => stat.day.isSame(d.day))[0]
 
         if (showPerCapita)
-          d[county.id] = {newCasesPerCapita: stat ? ((stat.newCases / county.population) * 100000) : null}
+          d[county.id] = {newCases: stat ? ((stat.newCases / county.population) * 100000) : null}
         else
-          d[county.id] = {newCasesPerCapita: stat ? stat.newCases : null}
+          d[county.id] = {newCases: stat ? stat.newCases : null}
       })
     })
 
     counties.forEach(county => {
       data.forEach((d, i) => {
-        const pastSevenDaysData = (i >= (averageDays - 1) ? data.slice(i - (averageDays - 1), i + 1) : []).map(d => d[county.id]?.newCasesPerCapita).filter(d => d)
+        const additionalDays = ((averageDays - 1) / 2)
+        const pastSevenDaysData = data.slice(i - additionalDays, i + 1 + additionalDays).map(d => d[county.id]?.newCases).filter(d => d)
 
-        d[county.id].averageNewCasesPerCapita = pastSevenDaysData.length === averageDays ? (pastSevenDaysData.reduce((a, b) => a + b, 0) / averageDays) : null
+        d[county.id].averageNewCases = pastSevenDaysData.length === averageDays ? (pastSevenDaysData.reduce((a, b) => a + b, 0) / averageDays) : null
       })
     })
 
@@ -111,7 +113,7 @@
         labels: data.map(d => d.day.format('MMM D')),
         datasets: counties.map(county => {return {
           label: county.label,
-          data: data.map(d => d[county.id].averageNewCasesPerCapita),
+          data: data.map(d => d[county.id].averageNewCases),
           fill: false,
           borderColor: [county.color],
           hidden: !county.display,
@@ -120,7 +122,7 @@
       options: {
         title: {
           display: true,
-          text: `Daily New Cases${showPerCapita ? ' Per 100,000' : ''}`,
+          text: `Daily New ${showType === 'deaths' ? 'Deaths' : 'Cases'}${showPerCapita ? ' Per 100,000' : ''}`,
           fontSize: '24',
           fontFamily: 'Arial',
           fontColor: '#000',
